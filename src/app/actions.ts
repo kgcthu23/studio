@@ -1,39 +1,76 @@
 'use server';
 
-import { generateSynopsis } from '@/ai/flows/generate-synopsis';
 import type { Media } from '@/types';
 
-/**
- * Fetches media details from a mock API.
- * In a real app, this would call an API like TMDB.
- */
-export async function fetchMediaDetails(title: string): Promise<{ posterUrl: string | null }> {
+const TMDB_API_KEY = process.env.TMDB_API_KEY;
+const TMDB_API_URL = 'https://api.themoviedb.org/3';
+
+async function searchTMDB(title: string, year: string | null, type: 'movie' | 'tv') {
+  const searchQuery = encodeURIComponent(title);
+  const searchYear = year || '';
+  const url = `${TMDB_API_URL}/search/${type}?api_key=${TMDB_API_KEY}&query=${searchQuery}&year=${searchYear}`;
+
   try {
-    // The seed is generated from the title to have consistent images for the same title.
-    const seed = title.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return {
-      posterUrl: `https://picsum.photos/seed/${seed}/400/600`
-    };
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error('TMDB search request failed:', response.statusText);
+      return null;
+    }
+    const data = await response.json();
+    return data.results && data.results.length > 0 ? data.results[0] : null;
   } catch (error) {
-    console.error('Failed to fetch media details:', error);
-    return { posterUrl: null };
+    console.error('Error fetching from TMDB:', error);
+    return null;
+  }
+}
+
+async function getTMDBDetails(id: number, type: 'movie' | 'tv') {
+  const url = `${TMDB_API_URL}/${type}/${id}?api_key=${TMDB_API_KEY}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error('TMDB details request failed:', response.statusText);
+      return null;
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching TMDB details:', error);
+    return null;
   }
 }
 
 /**
- * Generates a synopsis for a given media item using the AI flow.
+ * Fetches media details from TMDB.
  */
-export async function getSynopsis(media: Media): Promise<string> {
-  try {
-    const synopsis = await generateSynopsis({
-      title: media.title,
-      // Constructing mock data that would typically come from an API and a database.
-      apiData: `Release Year: ${media.year || 'Unknown'}. Type: ${media.type}.`,
-      databaseData: `File Path: ${media.filePath}. User Tags: ${media.tags.join(', ')}. Watched: ${String(media.isWatched)}.`,
-    });
-    return synopsis;
-  } catch (error) {
-    console.error('Failed to generate synopsis:', error);
-    return "Could not generate a synopsis for this title.";
+export async function fetchMediaDetails(media: Media): Promise<Partial<Media> | null> {
+  if (!TMDB_API_KEY) {
+    console.error('TMDB_API_KEY is not configured.');
+    return null;
   }
+
+  const searchResult = await searchTMDB(media.title, media.year, media.type);
+  if (!searchResult) {
+    return null;
+  }
+
+  const details = await getTMDBDetails(searchResult.id, media.type);
+  if (!details) {
+    return null;
+  }
+
+  const posterPath = details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : null;
+  const synopsis = details.overview || null;
+  const tags = details.genres?.map((g: { name: string }) => g.name) || [];
+
+  return {
+    posterUrl: posterPath,
+    synopsis: synopsis,
+    tags: [...new Set([...media.tags, ...tags])], // Merge existing tags with new ones
+  };
+}
+
+// This function is no longer needed as we fetch synopsis from TMDB
+// but we keep it to avoid breaking other parts of the app for now.
+export async function getSynopsis(media: Media): Promise<string> {
+  return media.synopsis || "Synopsis not available.";
 }

@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TagInput } from '@/components/tag-input';
-import { fetchMediaDetails, getSynopsis } from '@/app/actions';
+import { fetchMediaDetails } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import type { Media } from '@/types';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
@@ -22,29 +22,26 @@ type MediaDetailSheetProps = {
 };
 
 export function MediaDetailSheet({ media, onUpdate, isOpen, onOpenChange }: MediaDetailSheetProps) {
-  const [isFetchingPoster, startPosterFetch] = useTransition();
-  const [isGeneratingSynopsis, startSynopsisGeneration] = useTransition();
+  const [isFetchingDetails, startDetailsFetch] = useTransition();
   const { toast } = useToast();
   const placeholderImage = PlaceHolderImages.find((img) => img.id === 'poster-placeholder');
 
   useEffect(() => {
     if (isOpen && !media.posterUrl) {
-      startPosterFetch(async () => {
-        const result = await fetchMediaDetails(media.title);
-        if (result.posterUrl) {
-          onUpdate({ ...media, posterUrl: result.posterUrl });
+      startDetailsFetch(async () => {
+        const result = await fetchMediaDetails(media);
+        if (result) {
+          onUpdate({ ...media, ...result });
+        } else {
+           toast({
+            variant: "destructive",
+            title: "Failed to fetch details",
+            description: `Could not find details for "${media.title}" on TMDB.`,
+          });
         }
       });
     }
-  }, [isOpen, media, onUpdate]);
-
-  const handleGenerateSynopsis = () => {
-    startSynopsisGeneration(async () => {
-      const synopsis = await getSynopsis(media);
-      onUpdate({ ...media, synopsis });
-      toast({ title: 'Synopsis Generated', description: 'The AI-powered synopsis has been added.' });
-    });
-  };
+  }, [isOpen, media, onUpdate, toast]);
 
   const handleWatchedChange = (checked: boolean) => {
     onUpdate({ ...media, isWatched: checked });
@@ -66,7 +63,7 @@ export function MediaDetailSheet({ media, onUpdate, isOpen, onOpenChange }: Medi
         </SheetHeader>
         <div className="space-y-6">
           <div className="relative aspect-[2/3] w-full rounded-lg overflow-hidden">
-            {isFetchingPoster ? (
+            {isFetchingDetails ? (
               <Skeleton className="h-full w-full" />
             ) : (
               <Image
@@ -81,7 +78,7 @@ export function MediaDetailSheet({ media, onUpdate, isOpen, onOpenChange }: Medi
 
           <div>
             <h3 className="font-semibold text-lg mb-2">Synopsis</h3>
-            {isGeneratingSynopsis ? (
+            {isFetchingDetails ? (
               <div className="space-y-2">
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-full" />
@@ -90,10 +87,7 @@ export function MediaDetailSheet({ media, onUpdate, isOpen, onOpenChange }: Medi
             ) : media.synopsis ? (
               <p className="text-muted-foreground">{media.synopsis}</p>
             ) : (
-              <Button onClick={handleGenerateSynopsis} disabled={isGeneratingSynopsis} variant="outline" size="sm">
-                <Sparkles className="mr-2 h-4 w-4" />
-                Generate Synopsis
-              </Button>
+              <p className="text-sm text-muted-foreground">No synopsis available for this title.</p>
             )}
           </div>
 

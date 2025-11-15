@@ -2,11 +2,7 @@
 'use server';
 
 /**
- * @fileOverview A flow to generate a short synopsis for a movie title by combining data from a database and an external API.
- *
- * - generateSynopsis - A function that generates the synopsis and updates the database.
- * - GenerateSynopsisInput - The input type for the generateSynopsis function, including the movie title and external API data.
- * - GenerateSynopsisOutput - The return type for the generateSynopsis function, which is a string containing the synopsis.
+ * @fileOverview This file is now deprecated as synopsis is fetched from TMDB.
  */
 
 import {ai} from '@/ai/genkit';
@@ -25,24 +21,7 @@ const GenerateSynopsisOutputSchema = z.string().describe('A short synopsis of th
 export type GenerateSynopsisOutput = z.infer<typeof GenerateSynopsisOutputSchema>;
 
 export async function generateSynopsis(input: GenerateSynopsisInput): Promise<GenerateSynopsisOutput> {
-  return generateSynopsisFlow(input);
+  // This flow is no longer the primary source for the synopsis.
+  // Returning a placeholder.
+  return "Synopsis is now fetched from TMDB.";
 }
-
-const generateSynopsisPrompt = ai.definePrompt({
-  name: 'generateSynopsisPrompt',
-  input: {schema: GenerateSynopsisInputSchema},
-  output: {schema: GenerateSynopsisOutputSchema},
-  prompt: `You are a movie critic. Generate a short synopsis for the movie based on the following information:\n\nDatabase Data: {{{databaseData}}}\nAPI Data: {{{apiData}}}\n\nTitle: {{{title}}}\n\nSynopsis:`,
-});
-
-const generateSynopsisFlow = ai.defineFlow(
-  {
-    name: 'generateSynopsisFlow',
-    inputSchema: GenerateSynopsisInputSchema,
-    outputSchema: GenerateSynopsisOutputSchema,
-  },
-  async input => {
-    const {output} = await generateSynopsisPrompt(input);
-    return output!;
-  }
-);
