@@ -29,7 +29,7 @@ export async function getSynopsis(media: Media): Promise<string> {
       title: media.title,
       // Constructing mock data that would typically come from an API and a database.
       apiData: `Release Year: ${media.year || 'Unknown'}. Type: ${media.type}.`,
-      databaseData: `File Path: ${media.filePath}. User Tags: ${media.tags.join(', ')}. Watched: ${media.isWatched}.`,
+      databaseData: `File Path: ${media.filePath}. User Tags: ${media.tags.join(', ')}. Watched: ${String(media.isWatched)}.`,
     });
     return synopsis;
   } catch (error) {
