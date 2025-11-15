@@ -17,20 +17,19 @@ export default function Home() {
   const [library, setLibrary] = useState<Media[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [isProcessing, startTransition] = useTransition();
   const { toast } = useToast();
 
   const handleImport = (newMedia: Media[]) => {
-    // Add new media to library optimistically
     const uniqueNewMedia = newMedia.filter(
       (item) => !library.some((libItem) => libItem.filePath === item.filePath)
     );
     const updatedLibrary = [...library, ...uniqueNewMedia];
     setLibrary(updatedLibrary);
     
-    // Start fetching details in the background
     startTransition(() => {
       processMediaImports(uniqueNewMedia);
     });
@@ -64,6 +63,14 @@ export default function Home() {
   const updateMedia = (updatedMedia: Media) => {
     setLibrary((prev) => prev.map((m) => (m.id === updatedMedia.id ? updatedMedia : m)));
   };
+  
+  const allGenres = useMemo(() => {
+    const genres = new Set<string>();
+    library.forEach(media => {
+      media.tags.forEach(tag => genres.add(tag));
+    });
+    return Array.from(genres).sort();
+  }, [library]);
 
   const selectedMedia = useMemo(() => library.find((m) => m.id === selectedMediaId) || null, [library, selectedMediaId]);
 
@@ -81,9 +88,15 @@ export default function Home() {
         m.title.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
+    
+    if (selectedGenres.length > 0) {
+      result = result.filter(m => 
+        selectedGenres.every(genre => m.tags.includes(genre))
+      );
+    }
 
     return result;
-  }, [library, filter, searchQuery]);
+  }, [library, filter, searchQuery, selectedGenres]);
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
@@ -96,6 +109,9 @@ export default function Home() {
               onFilterChange={setFilter}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              allGenres={allGenres}
+              selectedGenres={selectedGenres}
+              onGenreChange={setSelectedGenres}
             />
             <MediaLibrary media={filteredLibrary} onSelectMedia={setSelectedMediaId} />
           </div>
