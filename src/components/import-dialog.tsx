@@ -18,7 +18,7 @@ import type { Media } from '@/types';
 type ImportDialogProps = {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onImport: (media: Media[]) => void;
+  onImport: (media: Omit<Media, 'isWatched' | 'tags' | 'posterUrl' | 'synopsis'>[]) => void;
 };
 
 export function ImportDialog({ isOpen, onOpenChange, onImport }: ImportDialogProps) {
@@ -30,7 +30,7 @@ export function ImportDialog({ isOpen, onOpenChange, onImport }: ImportDialogPro
     setIsProcessing(true);
     try {
       const lines = paths.split('\n').filter((line) => line.trim() !== '');
-      const newMedia: Media[] = lines.map((line) => {
+      const newMedia = lines.map((line) => {
         const { title, year, type } = parseFilePath(line);
         return {
           id: crypto.randomUUID(),
@@ -38,16 +38,12 @@ export function ImportDialog({ isOpen, onOpenChange, onImport }: ImportDialogPro
           title,
           year,
           type,
-          posterUrl: null,
-          synopsis: null,
-          tags: [],
-          isWatched: false,
         };
       });
       onImport(newMedia);
       toast({
         title: 'Import Successful',
-        description: `${newMedia.length} new items processed.`,
+        description: `${newMedia.length} new items processed and are being saved to your library.`,
       });
       setPaths('');
       onOpenChange(false);

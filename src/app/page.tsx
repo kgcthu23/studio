@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useTransition } from 'react';
+import { useState, useMemo, useTransition, useEffect } from 'react';
 import type { Media } from '@/types';
 import { CineHeader } from '@/components/cine-header';
 import { EmptyState } from '@/components/empty-state';
@@ -10,11 +10,14 @@ import { MediaDetailSheet } from '@/components/media-detail-sheet';
 import { ImportDialog } from '@/components/import-dialog';
 import { fetchMediaDetails } from './actions';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth, useCollection, useFirebase, useMemoFirebase, useUser } from '@/firebase';
+import { addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
+import { collection, doc } from 'firebase/firestore';
 
 export type FilterType = 'all' | 'watched' | 'unwatched';
 
 export default function Home() {
-  const [library, setLibrary] = useState<Media[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
@@ -22,33 +25,60 @@ export default function Home() {
   const [isImporting, setIsImporting] = useState(false);
   const [isProcessing, startTransition] = useTransition();
   const { toast } = useToast();
+  const { firestore } = useFirebase();
+  const auth = useAuth();
+  const { user, isUserLoading } = useUser();
 
-  const handleImport = (newMedia: Media[]) => {
+  const mediaCollectionRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return collection(firestore, 'users', user.uid, 'mediaItems');
+  }, [user, firestore]);
+  
+  const { data: library, isLoading: isLibraryLoading } = useCollection<Media>(mediaCollectionRef);
+
+
+  useEffect(() => {
+    if (!user && !isUserLoading) {
+      initiateAnonymousSignIn(auth);
+    }
+  }, [user, isUserLoading, auth]);
+
+  const handleImport = (newMedia: Omit<Media, 'isWatched' | 'tags' | 'posterUrl' | 'synopsis'>[]) => {
+    if (!user || !firestore) return;
+  
     const uniqueNewMedia = newMedia.filter(
-      (item) => !library.some((libItem) => libItem.filePath === item.filePath)
-    );
-    const updatedLibrary = [...library, ...uniqueNewMedia];
-    setLibrary(updatedLibrary);
-    
+      (item) => !(library || []).some((libItem) => libItem.filePath === item.filePath)
+    ).map(m => ({
+      ...m,
+      isWatched: false,
+      tags: [],
+      posterUrl: null,
+      synopsis: null,
+    }));
+  
+    uniqueNewMedia.forEach(mediaItem => {
+      const docRef = doc(firestore, 'users', user.uid, 'mediaItems', mediaItem.id);
+      setDocumentNonBlocking(docRef, mediaItem, { merge: true });
+    });
+  
     startTransition(() => {
       processMediaImports(uniqueNewMedia);
     });
   };
 
   const processMediaImports = async (mediaToProcess: Media[]) => {
+    if (!user || !firestore) return;
     const promises = mediaToProcess.map(async (media) => {
       const details = await fetchMediaDetails(media);
-      return details ? { ...media, ...details } : media;
+      const updatedMedia = details ? { ...media, ...details } : media;
+      
+      const docRef = doc(firestore, 'users', user.uid, 'mediaItems', updatedMedia.id);
+      setDocumentNonBlocking(docRef, updatedMedia, { merge: true });
+
+      return updatedMedia;
     });
 
     const detailedMedia = await Promise.all(promises);
-
-    setLibrary((currentLibrary) => {
-       const libraryMap = new Map(currentLibrary.map(item => [item.id, item]));
-       detailedMedia.forEach(item => libraryMap.set(item.id, item));
-       return Array.from(libraryMap.values());
-    });
-    
     const fetchedCount = detailedMedia.filter(m => m.posterUrl).length;
 
     if (fetchedCount > 0) {
@@ -61,21 +91,23 @@ export default function Home() {
 
 
   const updateMedia = (updatedMedia: Media) => {
-    setLibrary((prev) => prev.map((m) => (m.id === updatedMedia.id ? updatedMedia : m)));
+    if (!user || !firestore) return;
+    const docRef = doc(firestore, 'users', user.uid, 'mediaItems', updatedMedia.id);
+    setDocumentNonBlocking(docRef, updatedMedia, { merge: true });
   };
   
   const allGenres = useMemo(() => {
     const genres = new Set<string>();
-    library.forEach(media => {
+    (library || []).forEach(media => {
       media.tags.forEach(tag => genres.add(tag));
     });
     return Array.from(genres).sort();
   }, [library]);
 
-  const selectedMedia = useMemo(() => library.find((m) => m.id === selectedMediaId) || null, [library, selectedMediaId]);
+  const selectedMedia = useMemo(() => (library || []).find((m) => m.id === selectedMediaId) || null, [library, selectedMediaId]);
 
   const filteredLibrary = useMemo(() => {
-    let result = library;
+    let result = library || [];
 
     if (filter === 'watched') {
       result = result.filter((m) => m.isWatched);
@@ -98,11 +130,17 @@ export default function Home() {
     return result;
   }, [library, filter, searchQuery, selectedGenres]);
 
+  const isLoading = isUserLoading || isLibraryLoading;
+
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
       <CineHeader onImportClick={() => setIsImporting(true)} />
       <main className="flex-1 p-4 md:p-6 lg:p-8">
-        {library.length > 0 ? (
+        {isLoading ? (
+          <div className="flex justify-center items-center h-full">
+            <p>Loading your library...</p>
+          </div>
+        ) : (library || []).length > 0 ? (
           <div className="space-y-6">
             <FilterControls
               currentFilter={filter}

@@ -9,3 +9,5 @@ export interface Media {
   tags: string[];
   isWatched: boolean;
 }
+
+export type FirestoreMediaItem = Omit<Media, 'id'>;
