@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useTransition } from 'react';
 import type { Media } from '@/types';
 import { CineHeader } from '@/components/cine-header';
 import { EmptyState } from '@/components/empty-state';
@@ -8,6 +8,8 @@ import { FilterControls } from '@/components/filter-controls';
 import { MediaLibrary } from '@/components/media-library';
 import { MediaDetailSheet } from '@/components/media-detail-sheet';
 import { ImportDialog } from '@/components/import-dialog';
+import { fetchMediaDetails } from './actions';
+import { useToast } from '@/hooks/use-toast';
 
 export type FilterType = 'all' | 'watched' | 'unwatched';
 
@@ -17,14 +19,47 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isProcessing, startTransition] = useTransition();
+  const { toast } = useToast();
 
   const handleImport = (newMedia: Media[]) => {
-    setLibrary((prev) => {
-      const existingPaths = new Set(prev.map((item) => item.filePath));
-      const uniqueNewMedia = newMedia.filter((item) => !existingPaths.has(item.filePath));
-      return [...prev, ...uniqueNewMedia];
+    // Add new media to library optimistically
+    const uniqueNewMedia = newMedia.filter(
+      (item) => !library.some((libItem) => libItem.filePath === item.filePath)
+    );
+    const updatedLibrary = [...library, ...uniqueNewMedia];
+    setLibrary(updatedLibrary);
+    
+    // Start fetching details in the background
+    startTransition(() => {
+      processMediaImports(uniqueNewMedia);
     });
   };
+
+  const processMediaImports = async (mediaToProcess: Media[]) => {
+    const promises = mediaToProcess.map(async (media) => {
+      const details = await fetchMediaDetails(media);
+      return details ? { ...media, ...details } : media;
+    });
+
+    const detailedMedia = await Promise.all(promises);
+
+    setLibrary((currentLibrary) => {
+       const libraryMap = new Map(currentLibrary.map(item => [item.id, item]));
+       detailedMedia.forEach(item => libraryMap.set(item.id, item));
+       return Array.from(libraryMap.values());
+    });
+    
+    const fetchedCount = detailedMedia.filter(m => m.posterUrl).length;
+
+    if (fetchedCount > 0) {
+      toast({
+        title: "Metadata updated",
+        description: `Successfully fetched details for ${fetchedCount} of ${mediaToProcess.length} new items.`,
+      });
+    }
+  };
+
 
   const updateMedia = (updatedMedia: Media) => {
     setLibrary((prev) => prev.map((m) => (m.id === updatedMedia.id ? updatedMedia : m)));

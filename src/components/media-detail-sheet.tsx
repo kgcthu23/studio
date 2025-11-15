@@ -27,7 +27,7 @@ export function MediaDetailSheet({ media, onUpdate, isOpen, onOpenChange }: Medi
   const placeholderImage = PlaceHolderImages.find((img) => img.id === 'poster-placeholder');
 
   useEffect(() => {
-    if (isOpen && !media.posterUrl) {
+    if (isOpen && !media.posterUrl && !media.synopsis) { // Only fetch if we don't have details
       startDetailsFetch(async () => {
         const result = await fetchMediaDetails(media);
         if (result) {
