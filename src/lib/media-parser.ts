@@ -17,6 +17,7 @@ export function parseFilePath(filePath: string): { title: string; year: string |
     .replace(/\./g, ' ') // Replace dots with spaces
     .replace(/_/g, ' ') // Replace underscores with spaces
     .replace(/-(?![a-zA-Z0-9])/g, ' ') // Replace hyphens that are not part of words
+    .replace(/"/g, '') // Remove quotes
     .replace(/\s+/g, ' ') // Collapse multiple spaces
     .trim();
 
