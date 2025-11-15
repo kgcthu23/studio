@@ -14,6 +14,7 @@ export type FilterType = 'all' | 'watched' | 'unwatched';
 export default function Home() {
   const [library, setLibrary] = useState<Media[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -32,10 +33,22 @@ export default function Home() {
   const selectedMedia = useMemo(() => library.find((m) => m.id === selectedMediaId) || null, [library, selectedMediaId]);
 
   const filteredLibrary = useMemo(() => {
-    if (filter === 'watched') return library.filter((m) => m.isWatched);
-    if (filter === 'unwatched') return library.filter((m) => !m.isWatched);
-    return library;
-  }, [library, filter]);
+    let result = library;
+
+    if (filter === 'watched') {
+      result = result.filter((m) => m.isWatched);
+    } else if (filter === 'unwatched') {
+      result = result.filter((m) => !m.isWatched);
+    }
+
+    if (searchQuery) {
+      result = result.filter((m) =>
+        m.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    return result;
+  }, [library, filter, searchQuery]);
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
@@ -43,7 +56,12 @@ export default function Home() {
       <main className="flex-1 p-4 md:p-6 lg:p-8">
         {library.length > 0 ? (
           <div className="space-y-6">
-            <FilterControls currentFilter={filter} onFilterChange={setFilter} />
+            <FilterControls
+              currentFilter={filter}
+              onFilterChange={setFilter}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+            />
             <MediaLibrary media={filteredLibrary} onSelectMedia={setSelectedMediaId} />
           </div>
         ) : (
