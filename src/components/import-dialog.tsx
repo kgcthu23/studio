@@ -18,7 +18,7 @@ import type { Media } from '@/types';
 type ImportDialogProps = {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onImport: (media: Omit<Media, 'isWatched' | 'tags' | 'posterUrl' | 'synopsis'>[]) => void;
+  onImport: (media: Omit<Media, 'isWatched' | 'tags' | 'posterUrl' | 'synopsis'>[]) => { addedCount: number; duplicateCount: number };
 };
 
 export function ImportDialog({ isOpen, onOpenChange, onImport }: ImportDialogProps) {
@@ -30,7 +30,7 @@ export function ImportDialog({ isOpen, onOpenChange, onImport }: ImportDialogPro
     setIsProcessing(true);
     try {
       const lines = paths.split('\n').filter((line) => line.trim() !== '');
-      const newMedia = lines.map((line) => {
+      const allNewMedia = lines.map((line) => {
         const { title, year, type } = parseFilePath(line);
         return {
           id: crypto.randomUUID(),
@@ -40,13 +40,31 @@ export function ImportDialog({ isOpen, onOpenChange, onImport }: ImportDialogPro
           type,
         };
       });
-      onImport(newMedia);
-      toast({
-        title: 'Import Successful',
-        description: `${newMedia.length} new items processed and are being saved to your library.`,
-      });
-      setPaths('');
-      onOpenChange(false);
+
+      const { addedCount, duplicateCount } = onImport(allNewMedia);
+
+      if (addedCount > 0) {
+        toast({
+          title: 'Import Successful',
+          description: `${addedCount} new items are being saved to your library.`,
+        });
+      }
+
+      if (duplicateCount > 0) {
+        toast({
+          variant: 'default',
+          title: 'Duplicates Found',
+          description: `${duplicateCount} items were already in your library and were not added again.`,
+        });
+      }
+      
+      if (addedCount === 0 && duplicateCount > 0) {
+        // All items were duplicates
+      } else {
+        setPaths('');
+        onOpenChange(false);
+      }
+
     } catch (error) {
       console.error('Import failed', error);
       toast({

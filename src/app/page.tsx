@@ -11,7 +11,7 @@ import { ImportDialog } from '@/components/import-dialog';
 import { fetchMediaDetails } from './actions';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, useCollection, useFirebase, useMemoFirebase, useUser } from '@/firebase';
-import { addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { collection, doc } from 'firebase/firestore';
 
@@ -44,26 +44,38 @@ export default function Home() {
   }, [user, isUserLoading, auth]);
 
   const handleImport = (newMedia: Omit<Media, 'isWatched' | 'tags' | 'posterUrl' | 'synopsis'>[]) => {
-    if (!user || !firestore) return;
+    if (!user || !firestore) return { addedCount: 0, duplicateCount: 0 };
   
-    const uniqueNewMedia = newMedia.filter(
-      (item) => !(library || []).some((libItem) => libItem.filePath === item.filePath)
-    ).map(m => ({
-      ...m,
-      isWatched: false,
-      tags: [],
-      posterUrl: null,
-      synopsis: null,
-    }));
-  
-    uniqueNewMedia.forEach(mediaItem => {
-      const docRef = doc(firestore, 'users', user.uid, 'mediaItems', mediaItem.id);
-      setDocumentNonBlocking(docRef, mediaItem, { merge: true });
+    const existingFilePaths = new Set((library || []).map(item => item.filePath));
+    const uniqueNewMedia: Media[] = [];
+    let duplicateCount = 0;
+
+    newMedia.forEach(item => {
+      if (existingFilePaths.has(item.filePath)) {
+        duplicateCount++;
+      } else {
+        uniqueNewMedia.push({
+          ...item,
+          isWatched: false,
+          tags: [],
+          posterUrl: null,
+          synopsis: null,
+        });
+      }
     });
-  
-    startTransition(() => {
-      processMediaImports(uniqueNewMedia);
-    });
+
+    if (uniqueNewMedia.length > 0) {
+      uniqueNewMedia.forEach(mediaItem => {
+        const docRef = doc(firestore, 'users', user.uid, 'mediaItems', mediaItem.id);
+        setDocumentNonBlocking(docRef, mediaItem, { merge: true });
+      });
+    
+      startTransition(() => {
+        processMediaImports(uniqueNewMedia);
+      });
+    }
+
+    return { addedCount: uniqueNewMedia.length, duplicateCount };
   };
 
   const processMediaImports = async (mediaToProcess: Media[]) => {
@@ -99,7 +111,7 @@ export default function Home() {
   const allGenres = useMemo(() => {
     const genres = new Set<string>();
     (library || []).forEach(media => {
-      media.tags.forEach(tag => genres.add(tag));
+      media.tags?.forEach(tag => genres.add(tag));
     });
     return Array.from(genres).sort();
   }, [library]);
